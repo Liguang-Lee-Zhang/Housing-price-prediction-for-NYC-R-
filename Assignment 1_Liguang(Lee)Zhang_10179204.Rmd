@@ -1,0 +1,363 @@
+---
+title: "Assignment_1"
+output: html_notebook
+---
+Liguang Zhang 
+10179204
+
+Hi TA and prof, please review the file in rmd format for the complete comments i supplied in addition to the code. The comments to the code may not be available when viewing this in html format. 
+
+Environment and Library setup
+```{r}
+setwd("/Users/liguangzhang/Desktop/CISC 351/Assignment 1")
+install.packages("visdat")
+install.packages("naniar")
+install.packages("ggplot2")
+install.packages("e1071")
+install.packages("corrplot")
+install.packages("tidyverse")
+install.packages("ggpubr")
+install.packages("MASS")
+
+
+library(dplyr)
+library(ggplot2)
+library(naniar)
+library(visdat)
+library(e1071)
+library(corrplot)
+library(tidyverse)
+library(ggpubr)
+library(MASS)
+```
+
+Part 1: Data Exploration, 
+```{r}
+brooklyn <- read.csv("2020_brooklyn.csv")
+manhattan <- read.csv("2020_manhattan.csv")
+
+#Sale price,land square feet, gross square feet were read in as character variables, converting them into numeric variables
+brooklyn$SALE.PRICE  <- gsub(",","",brooklyn$SALE.PRICE)
+brooklyn$SALE.PRICE  <- as.numeric(brooklyn$SALE.PRICE)
+
+brooklyn$LAND.SQUARE.FEET   <- gsub(",","",brooklyn$LAND.SQUARE.FEET )
+brooklyn$LAND.SQUARE.FEET   <- as.numeric(brooklyn$LAND.SQUARE.FEET )
+
+brooklyn$GROSS.SQUARE.FEET   <- gsub(",","",brooklyn$GROSS.SQUARE.FEET )
+brooklyn$GROSS.SQUARE.FEET   <- as.numeric(brooklyn$GROSS.SQUARE.FEET )
+
+manhattan$SALE.PRICE  <- gsub(",","",manhattan$SALE.PRICE)
+manhattan$SALE.PRICE  <- as.numeric(manhattan$SALE.PRICE)
+
+manhattan$LAND.SQUARE.FEET   <- gsub(",","",manhattan$LAND.SQUARE.FEET )
+manhattan$LAND.SQUARE.FEET   <- as.numeric(manhattan$LAND.SQUARE.FEET )
+
+manhattan$GROSS.SQUARE.FEET   <- gsub(",","",manhattan$GROSS.SQUARE.FEET )
+manhattan$GROSS.SQUARE.FEET   <- as.numeric(manhattan$GROSS.SQUARE.FEET )
+
+manhattan$TOTAL.UNITS   <- as.numeric(manhattan$TOTAL.UNITS)
+
+#converting sale.date from character into date variables
+brooklyn$SALE.DATE<- as.Date(brooklyn$SALE.DATE)
+manhattan$SALE.DATE<- as.Date(manhattan$SALE.DATE)
+
+#Dropping the rows where SALE.PRICE is under $5000, as those rows indicate transfer of ownership without 
+#cash consideration, including where a parent passes on her property to her child. These considerable number of rows with under $5000 of sale price would mess up the prediction on house selling price. 
+brooklyn<-subset(brooklyn,SALE.PRICE>5000)
+manhattan<-subset(manhattan,SALE.PRICE>5000)
+
+
+head(brooklyn)
+head(manhattan)
+str(brooklyn)
+str(manhattan)
+
+rm(list=ls())
+
+# check missing data
+miss_var_summary(brooklyn)
+vis_dat(brooklyn)
+
+miss_var_summary(manhattan)
+vis_dat(manhattan)
+
+```
+Brooklyn:
+Using the miss_var_summary(brooklyn) command, it was determined that EASE.MENT has all of its datapoints missing, therefore it won't be used in the regression analysis. 
+Borough would also not be used as it is the same for all the observations in manhattan and brooklyn dataframes respectively. 
+Commercial units,residential units,and Total Units also have a fair percentage of missing values.They would not be used in the regression analysis. 
+
+
+Answer to RQ1.1
+```{r}
+#split trainning and testing datasets
+brook <- sort(sample(nrow(brooklyn), nrow(brooklyn)*.9))
+btrain<-brooklyn[brook,]
+btest<-brooklyn[-brook,]
+
+
+manha <- sort(sample(nrow(manhattan), nrow(manhattan)*.9))
+mtrain<-manhattan[manha,]
+mtest<-manhattan[-manha,]
+
+```
+
+RQ1.2 Analyze the raw features
+
+```{r}
+
+#Brooklyn
+
+#Analyzing the sale price(response variable)
+fivenum(btrain$SALE.PRICE)
+summary(btrain$SALE.PRICE)
+boxplot(btrain$SALE.PRICE, col = "blue")
+ggplot(btrain, aes(x = SALE.PRICE)) + geom_histogram()
+rug(btrain$SALE.PRICE)
+
+
+skewness(btrain$SALE.PRICE)
+#check if normally distributed
+qqnorm(btrain$SALE.PRICE)
+qqline(btrain$SALE.PRICE)
+#The skewness is 12.55, qqplot reveals that the points are not normally distributed
+
+#log-transform of SalePrice
+btrain$logSALE.PRICE<- log(btrain$SALE.PRICE)
+ggplot(btrain, aes(x = logSALE.PRICE)) + geom_histogram()
+qqnorm(btrain$logSALE.PRICE) 
+qqline(btrain$logSALE.PRICE)
+skewness(btrain$logSALE.PRICE)
+
+#skewness now becomes 0.166 which is only slightly skewed and the points are normally distributed assessed using the qq plot. 
+
+#Manhattan
+
+#Analyzing the sale price(response variable)
+fivenum(mtrain$SALE.PRICE)
+summary(mtrain$SALE.PRICE)
+boxplot(mtrain$SALE.PRICE, col = "blue")
+ggplot(mtrain, aes(x = SALE.PRICE)) + geom_histogram()
+rug(mtrain$SALE.PRICE)
+
+
+skewness(mtrain$SALE.PRICE)
+#check if normally distributed
+qqnorm(mtrain$SALE.PRICE)
+qqline(mtrain$SALE.PRICE)
+#The skewness is 22.47, qqplot reveals that the points are not normally distributed
+
+#log-transform of SalePrice
+mtrain$logSALE.PRICE<- log(mtrain$SALE.PRICE)
+ggplot(mtrain, aes(x = logSALE.PRICE)) + geom_histogram()
+qqnorm(mtrain$logSALE.PRICE) 
+qqline(mtrain$logSALE.PRICE)
+skewness(mtrain$logSALE.PRICE)
+
+#skewness now becomes 0.838 which is moderately skewed(acceptable skewness) and the points are normally distributed assessed using the qq plot. 
+
+```
+Brooklyn&Manhattan:
+Carefully considering all the available predictors. I rule out the ones with large number of missing values in them including EASEMENT,LAND.SF,GROSS.SF,COMMERCIAL.UNITS,RESIDENTIAL.UNITS.Out of the remaining predictors,I chose the ones that, based on my domain knowledge in the housing market, are correlated with SALE.PRICE, do not correlate with each other, and are the most representative predictor out of similar predictors. These include sale.date, Zip code, Tax class at time of sale, year built, building class category, and Total units.
+
+Now i will confirm that these predictors contribute to the prediction of house selling prices. Once i confirm they are contributors, I will perform transformations on the categorical variables, and devise of a way to handle missing values in those that contain missing values. 
+
+RQ1.2 pick raw features that contribute to house sale price
+```{r}
+#Brooklyn:
+boxplot(logSALE.PRICE ~ SALE.DATE, data = btrain)#not a significant predictor
+boxplot(logSALE.PRICE ~ ZIP.CODE, data = btrain)#a potential predictor
+boxplot(logSALE.PRICE ~ BUILDING.CLASS.CATEGORY, data = btrain)#good predictor, good separation of medians 
+boxplot(logSALE.PRICE ~ YEAR.BUILT, data = btrain)#good predictor, good separation of medians 
+boxplot(logSALE.PRICE ~ TAX.CLASS.AT.TIME.OF.SALE, data = btrain)#a potential predictor
+boxplot(logSALE.PRICE ~ TOTAL.UNITS, data = btrain)#good predictor, more units correlate with higher logSALE.PRICE
+
+
+#Manhattan
+boxplot(logSALE.PRICE ~ SALE.DATE, data = mtrain)#not a significant predictor
+boxplot(logSALE.PRICE ~ ZIP.CODE, data = mtrain)#a potential predictor
+boxplot(logSALE.PRICE ~ BUILDING.CLASS.CATEGORY, data = mtrain)#good predictor, good separation of medians 
+boxplot(logSALE.PRICE ~ YEAR.BUILT, data = mtrain)#good predictor, good separation of medians 
+boxplot(logSALE.PRICE ~ TAX.CLASS.AT.TIME.OF.SALE, data = mtrain)#a good predictor
+boxplot(logSALE.PRICE ~ TOTAL.UNITS, data = mtrain)#good predictor, more units correlate with higher logSALE.PRICE
+
+
+
+```
+Brooklyn&Manhattan:
+So the five predictors that i chose are **ZIP code, building class category, year built, tax class at time of sale, total.units**.
+
+For brooklyn, Year built has 7.37% of its rows missing, which is a small number of the total rows.Total Units has 17.7% of its missing. I'll exclude these rows from the model without needing to write any code for it as that is the default method R handles missing values. 
+
+RQ1.2 Transform variable
+All the variables except Building class category are integers.So I only need to perform transformation on Building class category. 
+
+```{r}
+#Brooklyn
+
+#Checking missing data in variable year built
+str(btrain)
+miss_var_summary(btrain)
+
+
+# Creating a new numeric variable No.BUILDING.CLASS.CATEGORY by taking only the number designation for the buiidling class category.  
+mapping <- c("01 ONE FAMILY DWELLINGS" = 01, "02 TWO FAMILY DWELLINGS" = 02, "03 THREE FAMILY DWELLINGS" = 03, "04 TAX CLASS 1 CONDOS" = 04,"05 TAX CLASS 1 VACANT LAND"=05,"06 TAX CLASS 1 - OTHER"=06, "07 RENTALS - WALKUP APARTMENTS" = 07,"08 RENTALS - ELEVATOR APARTMENTS"=08,"09 COOPS - WALKUP APARTMENTS"=09,"10 COOPS - ELEVATOR APARTMENTS"=10, "11 SPECIAL CONDO BILLING LOTS"=11,"12 CONDOS - WALKUP APARTMENTS"=12, "13 CONDOS - ELEVATOR APARTMENTS"=13,"14 RENTALS - 4-10 UNIT"=14,"15 CONDOS - 2-10 UNIT RESIDENTIAL"=15,"16 CONDOS - 2-10 UNIT WITH COMMERCIAL UNIT"=16,"17 CONDO COOPS"=17, "21 OFFICE BUILDINGS"=21,"22 STORE BUILDINGS"=22,"26 OTHER HOTELS"=26,"27 FACTORIES"=27,"28 COMMERCIAL CONDOS"=28,"29 COMMERCIAL GARAGES"=29,"30 WAREHOUSES"=30,"31 COMMERCIAL VACANT LAND"=31,"32 HOSPITAL AND HEALTH FACILITIES"=32,"33 EDUCATIONAL FACILITIES"=33,"34 THEATRES"=34,"35 INDOOR PUBLIC AND CULTURAL FACILITIES"=35,"36 OUTDOOR RECREATIONAL FACILITIES"=36,"37 RELIGIOUS FACILITIES"=37,"38 ASYLUMS AND HOMES"=38,"41 TAX CLASS 4 - OTHER"=41,"42 CONDO CULTURAL/MEDICAL/EDUCATIONAL/ETC"=42,"43 CONDO OFFICE BUILDINGS"=43,"44 CONDO PARKING"=44,"45 CONDO HOTELS"=45,"46 CONDO STORE BUILDINGS"=46,"47 CONDO NON-BUSINESS STORAGE"=47,"48 CONDO TERRACES/GARDENS/CABANAS"=48,"49 CONDO WAREHOUSES/FACTORY/INDUS"=49)
+
+btrain$No.BUILDING.CLASS.CATEGORY <- mapping[btrain$BUILDING.CLASS.CATEGORY]
+
+#Manhattan
+
+mtrain$No.BUILDING.CLASS.CATEGORY <- mapping[mtrain$BUILDING.CLASS.CATEGORY]
+
+
+```
+
+RQ1.3 Detect if multicollinearity exists in selected and newly created features.
+
+```{r}
+#Brooklyn:
+# Pearson correlation between 2 variables
+cor(btrain$No.BUILDING.CLASS.CATEGORY, btrain$ZIP.CODE,use="complete.obs")
+cor(btrain$No.BUILDING.CLASS.CATEGORY, btrain$YEAR.BUILT,use="complete.obs")
+cor(btrain$No.BUILDING.CLASS.CATEGORY, btrain$TOTAL.UNITS,use="complete.obs")
+cor(btrain$No.BUILDING.CLASS.CATEGORY, btrain$TAX.CLASS.AT.TIME.OF.SALE,use="complete.obs")
+#These two are highly correlated with a correlation value of 0.94.
+#Get rid of TAX.CLASS.AT.TIME.OF.SALE
+
+cor(btrain$ZIP.CODE, btrain$YEAR.BUILT,use="complete.obs")
+cor(btrain$ZIP.CODE, btrain$TOTAL.UNITS,use="complete.obs")
+cor(btrain$TOTAL.UNITS, btrain$YEAR.BUILT,use="complete.obs")
+
+#Other pairs variables are not significantly correlated with each other. They all have correlation values that fall between -0.15 to 0.45.
+
+#Manhattan:
+# Pearson correlation between 2 variables
+cor(mtrain$No.BUILDING.CLASS.CATEGORY, mtrain$ZIP.CODE,use="complete.obs")
+cor(mtrain$No.BUILDING.CLASS.CATEGORY, mtrain$YEAR.BUILT,use="complete.obs")
+cor(mtrain$No.BUILDING.CLASS.CATEGORY, mtrain$TOTAL.UNITS,use="complete.obs")
+cor(mtrain$No.BUILDING.CLASS.CATEGORY, mtrain$TAX.CLASS.AT.TIME.OF.SALE,use="complete.obs")
+#These two are highly correlated with a correlation value of 0.89.
+#Get rid of TAX.CLASS.AT.TIME.OF.SALE
+
+cor(mtrain$ZIP.CODE, mtrain$YEAR.BUILT,use="complete.obs")
+cor(mtrain$ZIP.CODE, mtrain$TOTAL.UNITS,use="complete.obs")
+cor(mtrain$TOTAL.UNITS, mtrain$YEAR.BUILT,use="complete.obs")
+
+#Other pairs variables are not significantly correlated with each other. They all have correlation values that fall between -0.1 to 0.21.
+
+
+```
+
+RQ1.4 Brooklyn and Manhattan:
+The final selected predictors are ZIP.CODE,NO.BUILDING.CLASS.CATEGORY,YEAR.BUILT,and TOTAL.UNITS.Created the numeric NO.BUILDING.CLASS.CATEGORY variable from character BUILDING.CLASS.CATEGORY variable. filtered other variables due to having large number of missing values, likelihood of multicoplinearity between the filtered variables and selected variables, and lastly, filtered TAX.CLASS.AT.TIME.OF.SALE due to multicolinearity with No.BUILDING.CLASS.CATEGORY. The detailed rationale and steps for the filtering, transformation and selection of the predictors can be found in the comments section as well as the markdown sections found above. 
+
+Part 2:
+Building the multiple linear regression models:
+```{r}
+#Brooklyn:
+model_v1 <- lm(formula = logSALE.PRICE ~ ZIP.CODE +  No.BUILDING.CLASS.CATEGORY + YEAR.BUILT+ TOTAL.UNITS, data = btrain,na.action = na.omit)
+
+summary(model_v1)
+
+#seems that No.BUILDING.CLASS.CATEGORY does not contribute much, remove it in the second model
+model_v2 <- lm(formula = logSALE.PRICE ~ ZIP.CODE  + YEAR.BUILT+ TOTAL.UNITS, data = btrain,na.action = na.omit)
+
+summary(model_v2)
+
+#Manhattan
+model_m1 <- lm(formula = logSALE.PRICE ~ ZIP.CODE +  No.BUILDING.CLASS.CATEGORY + YEAR.BUILT+ TOTAL.UNITS, data = mtrain,na.action = na.omit)
+
+summary(model_m1)
+#All the predictors are significant 
+
+#Tax class was excluded from model 1 due to high correlation with Building class category, however, empirically, a correlation value of less than 0.9 should be alright. 
+model_m2 <- lm(formula = logSALE.PRICE ~ ZIP.CODE  + No.BUILDING.CLASS.CATEGORY + YEAR.BUILT+ TOTAL.UNITS + TAX.CLASS.AT.TIME.OF.SALE, data = mtrain,na.action = na.omit)
+
+summary(model_m2)
+#All the predictors, including the newly added tax class at time of sale, are significant
+```
+Brooklyn: Using the model on the test dataset and evaluating models.
+```{r}
+
+#Transforming the test dataset
+btest$logSALE.PRICE<- log(btest$SALE.PRICE)
+
+mapping <- c("01 ONE FAMILY DWELLINGS" = 01, "02 TWO FAMILY DWELLINGS" = 02, "03 THREE FAMILY DWELLINGS" = 03, "04 TAX CLASS 1 CONDOS" = 04,"05 TAX CLASS 1 VACANT LAND"=05,"06 TAX CLASS 1 - OTHER"=06, "07 RENTALS - WALKUP APARTMENTS" = 07,"08 RENTALS - ELEVATOR APARTMENTS"=08,"09 COOPS - WALKUP APARTMENTS"=09,"10 COOPS - ELEVATOR APARTMENTS"=10, "11 SPECIAL CONDO BILLING LOTS"=11,"12 CONDOS - WALKUP APARTMENTS"=12, "13 CONDOS - ELEVATOR APARTMENTS"=13,"14 RENTALS - 4-10 UNIT"=14,"15 CONDOS - 2-10 UNIT RESIDENTIAL"=15,"16 CONDOS - 2-10 UNIT WITH COMMERCIAL UNIT"=16,"17 CONDO COOPS"=17, "21 OFFICE BUILDINGS"=21,"22 STORE BUILDINGS"=22,"26 OTHER HOTELS"=26,"27 FACTORIES"=27,"28 COMMERCIAL CONDOS"=28,"29 COMMERCIAL GARAGES"=29,"30 WAREHOUSES"=30,"31 COMMERCIAL VACANT LAND"=31,"32 HOSPITAL AND HEALTH FACILITIES"=32,"33 EDUCATIONAL FACILITIES"=33,"34 THEATRES"=34,"35 INDOOR PUBLIC AND CULTURAL FACILITIES"=35,"36 OUTDOOR RECREATIONAL FACILITIES"=36,"37 RELIGIOUS FACILITIES"=37,"38 ASYLUMS AND HOMES"=38,"41 TAX CLASS 4 - OTHER"=41,"42 CONDO CULTURAL/MEDICAL/EDUCATIONAL/ETC"=42,"43 CONDO OFFICE BUILDINGS"=43,"44 CONDO PARKING"=44,"45 CONDO HOTELS"=45,"46 CONDO STORE BUILDINGS"=46,"47 CONDO NON-BUSINESS STORAGE"=47,"48 CONDO TERRACES/GARDENS/CABANAS"=48,"49 CONDO WAREHOUSES/FACTORY/INDUS"=49)
+
+btest$No.BUILDING.CLASS.CATEGORY <- mapping[btest$BUILDING.CLASS.CATEGORY]
+
+
+
+#Model performance on the training datasets
+p2t <- predict(model_v2,newdata=btrain)
+predict_logback2t <- expm1(p2t)
+error2t <- btrain$SALE.PRICE - predict_logback2t
+RMSE_v2t <- sqrt(mean(na.omit(error2t)^2))
+#Model 2 has a RMSE of 4634918 on the training data
+
+pt <- predict(model_v1, newdata = btrain)
+predict_logbackt <- expm1(pt)
+errort <- btrain$SALE.PRICE - predict_logbackt
+RMSE_v1t <- sqrt(mean(na.omit(errort)^2))
+#Model 1 has a RMSE of 4633183 on the training data
+
+#Model performance on the test datasets
+p2 <- predict(model_v2, newdata = btest)
+predict_logback2 <- expm1(p2)
+error2 <- btest$SALE.PRICE - predict_logback2
+RMSE_v2 <- sqrt(mean(na.omit(error2)^2))
+#Model 2 has a RMSE of 3009553 on the testing data
+
+p <- predict(model_v1, newdata = btest)
+predict_logback <- expm1(p)
+error <- btest$SALE.PRICE - predict_logback
+RMSE_v1 <- sqrt(mean(na.omit(error)^2))
+#Model 1 has a RMSE of 3007559 on the testing data 
+
+```
+Model 2 had slightly higher RMSE than model 1 on both training and testing datasets. Model 1 performed better than model 2 if measured using RMSE alone. 
+
+Manhattan: Using the model on the test dataset and evaluating models.
+```{r}
+
+#Transforming the test dataset
+mtest$logSALE.PRICE<- log(mtest$SALE.PRICE)
+
+mapping <- c("01 ONE FAMILY DWELLINGS" = 01, "02 TWO FAMILY DWELLINGS" = 02, "03 THREE FAMILY DWELLINGS" = 03, "04 TAX CLASS 1 CONDOS" = 04,"05 TAX CLASS 1 VACANT LAND"=05,"06 TAX CLASS 1 - OTHER"=06, "07 RENTALS - WALKUP APARTMENTS" = 07,"08 RENTALS - ELEVATOR APARTMENTS"=08,"09 COOPS - WALKUP APARTMENTS"=09,"10 COOPS - ELEVATOR APARTMENTS"=10, "11 SPECIAL CONDO BILLING LOTS"=11,"12 CONDOS - WALKUP APARTMENTS"=12, "13 CONDOS - ELEVATOR APARTMENTS"=13,"14 RENTALS - 4-10 UNIT"=14,"15 CONDOS - 2-10 UNIT RESIDENTIAL"=15,"16 CONDOS - 2-10 UNIT WITH COMMERCIAL UNIT"=16,"17 CONDO COOPS"=17, "21 OFFICE BUILDINGS"=21,"22 STORE BUILDINGS"=22,"26 OTHER HOTELS"=26,"27 FACTORIES"=27,"28 COMMERCIAL CONDOS"=28,"29 COMMERCIAL GARAGES"=29,"30 WAREHOUSES"=30,"31 COMMERCIAL VACANT LAND"=31,"32 HOSPITAL AND HEALTH FACILITIES"=32,"33 EDUCATIONAL FACILITIES"=33,"34 THEATRES"=34,"35 INDOOR PUBLIC AND CULTURAL FACILITIES"=35,"36 OUTDOOR RECREATIONAL FACILITIES"=36,"37 RELIGIOUS FACILITIES"=37,"38 ASYLUMS AND HOMES"=38,"41 TAX CLASS 4 - OTHER"=41,"42 CONDO CULTURAL/MEDICAL/EDUCATIONAL/ETC"=42,"43 CONDO OFFICE BUILDINGS"=43,"44 CONDO PARKING"=44,"45 CONDO HOTELS"=45,"46 CONDO STORE BUILDINGS"=46,"47 CONDO NON-BUSINESS STORAGE"=47,"48 CONDO TERRACES/GARDENS/CABANAS"=48,"49 CONDO WAREHOUSES/FACTORY/INDUS"=49)
+
+mtest$No.BUILDING.CLASS.CATEGORY <- mapping[mtest$BUILDING.CLASS.CATEGORY]
+
+
+
+#Model performance on the training datasets
+p2t <- predict(model_m2,newdata=mtrain)
+predict_logback2t <- expm1(p2t)
+error2t <- mtrain$SALE.PRICE - predict_logback2t
+RMSE_v2t <- sqrt(mean(na.omit(error2t)^2))
+#Model 2 has a RMSE of 32975801 on the training data
+
+pt <- predict(model_m1, newdata = mtrain)
+predict_logbackt <- expm1(pt)
+errort <- mtrain$SALE.PRICE - predict_logbackt
+RMSE_v1t <- sqrt(mean(na.omit(errort)^2))
+#Model 1 has a RMSE of 37387293 on the training data
+
+#Model performance on the test datasets
+p2 <- predict(model_m2, newdata = mtest)
+predict_logback2 <- expm1(p2)
+error2 <- mtest$SALE.PRICE - predict_logback2
+RMSE_v2 <- sqrt(mean(na.omit(error2)^2))
+#Model 2 has a RMSE of 8040733 on the testing data
+
+p <- predict(model_m1, newdata = mtest)
+predict_logback <- expm1(p)
+error <- mtest$SALE.PRICE - predict_logback
+RMSE_v1 <- sqrt(mean(na.omit(error)^2))
+#Model 1 has a RMSE of 8043340 on the testing data
+
+```
+
+Model 2 had slightly lower RMSE than model 1 on both training and testing datasets. Model 2 performed better than model 1 if measured using RMSE alone. 
+
+
+
