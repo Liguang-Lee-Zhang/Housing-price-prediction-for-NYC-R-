@@ -1,11 +1,8 @@
 ---
-title: "Assignment_1"
+title: "Housing price prediction for NYC"
 output: html_notebook
 ---
 Liguang Zhang 
-10179204
-
-Hi TA and prof, please review the file in rmd format for the complete comments i supplied in addition to the code. The comments to the code may not be available when viewing this in html format. 
 
 Environment and Library setup
 ```{r}
